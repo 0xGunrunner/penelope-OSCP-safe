@@ -6,7 +6,7 @@ This is an OSCP+-safe fork of [Penelope](https://github.com/brightio/penelope), 
 Modified for OSCP+ compliance by removing auto-exploitation, AI usage, and restricted Metasploit features. Auto-enumeration is retained as permitted. Use manually and verify with Offensive Security rules.
 
 ## Install
-Install via pip from GitHub:
+Install via pipx from GitHub:
 
 ```bash
 pipx install git+https://github.com/0xGunrunner/penelope-oscp-safe.git
