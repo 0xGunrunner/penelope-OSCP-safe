@@ -32,14 +32,14 @@ Limited to OSCP-safe: enumeration (e.g., lse, linuxexploitsuggester), persistenc
 Run with:
 
 ```bash
-penelope-OSCP-safe [arguments]
+penelopeOSCPsafe [arguments]
 ```
 
 Examples:
-- `penelope-OSCP-safe` : Listen for reverse shells on 0.0.0.0:4444
-- `penelope-OSCP-safe -p 5555` : Listen on port 5555
-- `penelope-OSCP-safe -c target -p 3333` : Connect to bind shell
-- `penelope-OSCP-safe ssh user@target` : Reverse shell via SSH
+- `penelopeOSCPsafe` : Listen for reverse shells on 0.0.0.0:4444
+- `penelopeOSCPsafe -p 5555` : Listen on port 5555
+- `penelopeOSCPsafe -c target -p 3333` : Connect to bind shell
+- `penelopeOSCPsafe ssh user@target` : Reverse shell via SSH
 - `penelope-OSCP-safe -s <File/Folder>` : HTTP serve file/folder
 
 Main menu: Use F12/Ctrl+C to detach shell. Supports TAB completion.
