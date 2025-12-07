@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__program__= "penelope-OSCP-safe"
+__program__= "penelopeOSCPsafe"
 __version__ = "0.14.9"
 
 import os
@@ -751,7 +751,7 @@ class MainMenu(BetterCMD):
 				f"{paint('[' + str(self.sid) + ']').red}{paint(')').cyan_DIM}"
 		) if self.sid else ''
 		self.prompt = (
-				f"{paint(f'(').cyan_DIM}{paint('Penelope-OSCP-safe').magenta}{paint(f')').cyan_DIM}"
+				f"{paint(f'(').cyan_DIM}{paint('PenelopeOSCPsafe').magenta}{paint(f')').cyan_DIM}"
 				f"{session_part}{paint('>').cyan_DIM} "
 		)
 
@@ -940,7 +940,7 @@ class MainMenu(BetterCMD):
 
 		if options.single_session and len(core.sessions) == 1:
 			core.stop()
-			logger.info("Penelope-OSCP-safe exited due to Single Session mode")
+			logger.info("PenelopeOSCPsafe exited due to Single Session mode")
 			return True
 
 	@session_operation(current=True)
@@ -1141,7 +1141,7 @@ class MainMenu(BetterCMD):
 						bind shell. If the current is reverse, it will spawn a reverse one
 
 			spawn 5555		Spawn a reverse shell on 5555 port. This can be used to get shell
-						on another tab. On the other tab run: ./penelope-OSCP-safe.py 5555
+						on another tab. On the other tab run: ./penelopeOSCPsafe.py 5555
 
 			spawn 3333 10.10.10.10	Spawn a reverse shell on the port 3333 of the 10.10.10.10 host
 		"""
@@ -1371,9 +1371,9 @@ class MainMenu(BetterCMD):
 	def do_exit(self, line):
 		"""
 
-		Exit Penelope-OSCP-safe
+		Exit PenelopeOSCPsafe
 		"""
-		if ask(f"Exit Penelope-OSCP-safe?{self.active_sessions} (y/N): ").lower() == 'y':
+		if ask(f"Exit PenelopeOSCPsafe?{self.active_sessions} (y/N): ").lower() == 'y':
 			super().do_exit(line)
 			core.stop()
 			for thread in threading.enumerate():
@@ -1766,11 +1766,11 @@ def handle_bind_errors(func):
 
 			2) {paint('Setting CAP_NET_BIND_SERVICE capability').UNDERLINE}
 			    sudo setcap 'cap_net_bind_service=+ep' {os.path.realpath(sys.executable)}
-			    ./penelope-OSCP-safe.py {port}
+			    ./penelopeOSCPsafe.py {port}
 			    sudo setcap 'cap_net_bind_service=-ep' {os.path.realpath(sys.executable)}
 
 			3) {paint('SUDO').UNDERLINE} (The {__program__.title()}'s directory will change to /root/.penelope)
-			    sudo ./penelope-OSCP-safe.py {port}
+			    sudo ./penelopeOSCPsafe.py {port}
 			"""))
 
 		except socket.gaierror:
@@ -3120,7 +3120,7 @@ class Session:
 		else:
 			if options.single_session and not core.sessions:
 				core.stop()
-				logger.info("Penelope-OSCP-safe exited due to Single Session mode")
+				logger.info("PenelopeOSCPsafe exited due to Single Session mode")
 				return
 			menu.set_id(None)
 		menu.show()
@@ -4606,7 +4606,7 @@ def custom_excepthook(*args):
 		return
 	print("\n", paint('Oops...').RED, '🐞\n', paint().yellow, '─' * 80, sep='')
 	sys.__excepthook__(exc_type, exc_value, exc_traceback)
-	print('─' * 80, f"\n{paint('Penelope-OSCP-safe version:').red} {paint(__version__).green}")
+	print('─' * 80, f"\n{paint('PenelopeOSCPsafe version:').red} {paint(__version__).green}")
 	print(f"{paint('Python version:').red} {paint(sys.version).green}")
 	print(f"{paint('System:').red} {paint(platform.version()).green}\n")
 
@@ -4766,7 +4766,7 @@ def listener_menu():
 	return True
 
 def load_rc():
-	RC = Path(options.basedir / "penelope-OSCP-saferc")
+	RC = Path(options.basedir / "penelopeOSCPsaferc")
 	try:
 		with open(RC, "r") as rc:
 			exec(rc.read(), globals())
@@ -4894,7 +4894,7 @@ class Options:
 def main():
 
 	## Command line options
-	parser = ArgumentParser(description="Penelope-OSCP-safe Shell Handler", add_help=False,
+	parser = ArgumentParser(description="PenelopeOSCPsafe Shell Handler", add_help=False,
 		formatter_class=lambda prog: ArgumentDefaultsHelpFormatter(prog, width=150, max_help_position=40))
 
 	parser.add_argument("-p", "--port", help=f"Port to listen/connect/serve, depending on -i/-c/-s options. \
@@ -4928,7 +4928,7 @@ def main():
 
 	debug = parser.add_argument_group("Debug")
 	debug.add_argument("-N", "--no-bins", help="Simulate binary absence on target (comma separated list)", metavar='')
-	debug.add_argument("-v", "--version", help="Show Penelope-OSCP-safe version", action="store_true")
+	debug.add_argument("-v", "--version", help="Show PenelopeOSCPsafe version", action="store_true")
 	debug.add_argument("-d", "--debug", help="Show debug messages", action="store_true")
 	debug.add_argument("-dd", "--dev-mode", help="Developer mode", action="store_true")
 	debug.add_argument("-cu", "--check-urls", help="Check health of hardcoded URLs", action="store_true")
@@ -5011,7 +5011,7 @@ def main():
 
 # Check Python version
 if not sys.version_info >= (3, 6):
-	print("(!) Penelope-OSCP-safe requires Python version 3.6 or higher (!)")
+	print("(!) PenelopeOSCPsafe requires Python version 3.6 or higher (!)")
 	sys.exit(1)
 
 # Apply default options
@@ -5117,7 +5117,7 @@ Listener = TCPListener
 if not fonts_installed():
 	logger.warning("For showing emojis please install 'fonts-noto-color-emoji'")
 
-# Load penelope-OSCP-saferc
+# Load penelopeOSCPsaferc
 load_rc()
 
 if __name__ == "__main__":
