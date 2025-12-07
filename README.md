@@ -9,7 +9,7 @@ Modified for OSCP+ compliance by removing auto-exploitation, AI usage, and restr
 Install via pip from GitHub:
 
 ```bash
-pip install git+https://github.com/0xGunrunner/penelope-oscp-safe.git
+pipx install git+https://github.com/0xGunrunner/penelope-oscp-safe.git
 ```
 
 ## Features
