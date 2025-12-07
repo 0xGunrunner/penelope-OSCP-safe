@@ -3,12 +3,12 @@
   build-backend = "setuptools.build_meta"
 
 [project]
-  name = "penelope-OSCP-safe"
+  name = "penelopeOSCPsafe"
   version = "0.14.8"
   requires-python = ">=3.6"
 
 [project.scripts]
-  penelope = "penelope-OSCP-safe:main"
+  penelope = "penelopeOSCPsafe:main"
 
 [tool.setuptools]
-  script-files = ["penelope-OSCP-safe.py"]
+  script-files = ["penelopeOSCPsafe.py"]
