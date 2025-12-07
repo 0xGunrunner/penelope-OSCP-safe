@@ -1,4 +1,4 @@
-# PenelopeOSCPSafe
+# Penelope OSCP Safe
 
 This is an OSCP+-safe fork of [Penelope](https://github.com/brightio/penelope), a powerful shell handler and modern netcat replacement for RCE exploitation. It simplifies post-exploitation while removing features that could violate OSCP+ rules: Meterpreter integration, `upload_privesc_scripts` (automated privesc helpers), and `peass_ng` (AI-enhanced enumeration).
 
